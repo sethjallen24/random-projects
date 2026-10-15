@@ -1,0 +1,166 @@
+diff --git a/src/admin_teams.py b/src/admin_teams.py
+index 3b9341a..8ef120e 100644
+--- a/src/admin_teams.py
++++ b/src/admin_teams.py
+@@ -126,13 +126,16 @@ def dismiss_stuck_modal_if_any(page, timeout_ms=5000):
+     (main.py does) so a leftover mask from a previous pair's failure gets
+     cleared before the next pair starts, rather than silently blocking it
+     too. A clean page (the overwhelmingly common case) returns almost
+-    immediately -- the 1000ms probe below is the only cost.
++    immediately: a leftover mask is already on screen, so one instant
++    visibility check finds it (this used to wait up to 1s for a mask to
++    appear, which cost a full second on every clean move).
+     """
+     mask = page.locator('[data-lockscreen], .x-modal').first
+     try:
+-        mask.wait_for(state="visible", timeout=1000)
++        if not mask.is_visible():
++            return  # nothing stuck -- nothing to do
+     except Exception:
+-        return  # nothing stuck -- nothing to do
++        return
+ 
+     print("    [recovery] detected a leftover modal dialog/overlay from a previous failure -- attempting to dismiss it")
+ 
+@@ -383,6 +386,11 @@ def _find_team_cell(page, teams_panel, team_name, timeout_ms):
+     team_cell = teams_panel.get_by_text(team_name, exact=True).first
+ 
+     try:
++        # Rows already drawn without this team: it won't appear by waiting,
++        # so go straight to the search box instead of idling 500ms. Only an
++        # empty (still-loading) grid gets the short wait.
++        if teams_panel.locator(".x-grid3-row").count() and not team_cell.is_visible():
++            raise LookupError(team_name)
+         team_cell.wait_for(state="visible", timeout=500)
+         return team_cell
+     except Exception:
+diff --git a/src/sheet_chat.py b/src/sheet_chat.py
+index daf8274..17d2e63 100644
+--- a/src/sheet_chat.py
++++ b/src/sheet_chat.py
+@@ -38,10 +38,11 @@ import traceback
+ from datetime import datetime, timedelta
+ from pathlib import Path
+ 
+-from google.auth.transport.requests import Request
+-from google.oauth2.credentials import Credentials
+-from google_auth_oauthlib.flow import InstalledAppFlow
+-from googleapiclient.discovery import build
++# The Google client libraries take a noticeable share of the toolbox's
++# startup time, so they load on first use instead of at import.
++def build(*args, **kwargs):
++    from googleapiclient.discovery import build as _build
++    return _build(*args, **kwargs)
+ 
+ # --------------------------------------------------------------------------
+ # CONFIG - edit these to match your sheet / preferences
+@@ -116,6 +117,9 @@ SCOPES = [
+ 
+ def get_credentials():
+     """Load cached OAuth credentials, refreshing or re-authorizing as needed."""
++    from google.auth.transport.requests import Request
++    from google.oauth2.credentials import Credentials
++    from google_auth_oauthlib.flow import InstalledAppFlow
+     creds = None
+     if os.path.exists(TOKEN_FILE):
+         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+diff --git a/src/sheet_slack.py b/src/sheet_slack.py
+index 8efd337..60d747d 100644
+--- a/src/sheet_slack.py
++++ b/src/sheet_slack.py
+@@ -24,10 +24,11 @@ from pathlib import Path
+ 
+ import requests
+ 
+-from google.auth.transport.requests import Request
+-from google.oauth2.credentials import Credentials
+-from google_auth_oauthlib.flow import InstalledAppFlow
+-from googleapiclient.discovery import build
++# The Google client libraries take a noticeable share of the toolbox's
++# startup time, so they load on first use instead of at import.
++def build(*args, **kwargs):
++    from googleapiclient.discovery import build as _build
++    return _build(*args, **kwargs)
+ 
+ # --------------------------------------------------------------------------
+ # CONFIG - edit these to match your sheet / preferences
+@@ -131,6 +132,9 @@ SLACK_TOKEN_FILE = ROOT_DIR / "slack_token.txt"
+ 
+ def get_credentials():
+     """Load cached OAuth credentials, refreshing or re-authorizing as needed."""
++    from google.auth.transport.requests import Request
++    from google.oauth2.credentials import Credentials
++    from google_auth_oauthlib.flow import InstalledAppFlow
+     creds = None
+     if os.path.exists(TOKEN_FILE):
+         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+diff --git a/src/team_maker_bp.py b/src/team_maker_bp.py
+index f9b2a73..79ab894 100644
+--- a/src/team_maker_bp.py
++++ b/src/team_maker_bp.py
+@@ -303,9 +303,11 @@ class BrightPatternBot:
+             return None
+ 
+     # -------------------------------------------------------------- helpers
+-    def _wait(self, condition, timeout, interval=0.2):
++    def _wait(self, condition, timeout, interval=0.1):
+         """Poll `condition()` until it returns a truthy value or `timeout` seconds pass.
+-        Returns the value (or None on timeout)."""
++        Returns the value (or None on timeout). The 0.1 s default suits checks
++        that are true as soon as one read says so; checks that need two equal
++        reads in a row pass their own, longer interval."""
+         end = time.monotonic() + timeout
+         while True:
+             self._check_stop()
+@@ -407,7 +409,7 @@ class BrightPatternBot:
+                 self.page.evaluate("() => { location.hash = 'GROUPS'; }")
+             self._dismiss_save_prompt()
+             self.page.wait_for_selector(SEL_TEAMS_GRID, state="visible", timeout=30000)
+-        self._wait(lambda: self.team_count() is not None, 15, 0.3)
++        self._wait(lambda: self.team_count() is not None, 15)
+         if entered:
+             # Wait for the actual first-team selection, once on entry. Network
+             # idle may never arrive on this site's persistent connection.
+@@ -445,7 +447,7 @@ class BrightPatternBot:
+                 return "found"
+             return "absent" if self.team_count() != before else None  # filter applied, no match
+ 
+-        found = self._wait(result, 6, 0.25) == "found"
++        found = self._wait(result, 6) == "found"
+         self._type_into(box, "")
+         box.press("Enter")
+         self._wait(lambda: self.team_count() == before, 6)
+@@ -593,7 +595,7 @@ class BrightPatternBot:
+                 self._open_form_tab("Services")
+                 self._open_picker("Service and")
+                 loaded = self._wait(lambda: self._names("services", SEL_LEFT_GRID) or
+-                                    self._names("services", SEL_RIGHT_GRID), 10, .3)
++                                    self._names("services", SEL_RIGHT_GRID), 10)
+                 if not loaded:
+                     self._click_dialog_button("Cancel")
+                     self.page.wait_for_selector(SEL_ASSIGN_WIN, state="hidden")
+@@ -771,13 +773,13 @@ class BrightPatternBot:
+                 self._fail_on_dialog("BrightPattern would not add a team")
+                 return self._new_form_ready()
+ 
+-            if self._wait(blank, 10, 0.25):
++            if self._wait(blank, 10):
+                 blank_since = time.monotonic()
+                 def stays_blank():
+                     if not blank():
+                         return "changed"
+                     return "ready" if time.monotonic() - blank_since >= 1.0 else None
+-                if self._wait(stays_blank, 2, 0.2) == "ready":
++                if self._wait(stays_blank, 2) == "ready":
+                     return self.page.locator(SEL_TEAM_NAME)
+             self.log("New-team form wasn't blank yet; trying add-team again...")
+         raise BPError("The blank new-team form did not open, so nothing was typed or saved.")
+@@ -1063,7 +1065,7 @@ class BrightPatternBot:
+         buttons = btn.locator("button:visible")
+         target = buttons.first if buttons.count() else btn
+         if not self._wait(lambda: "x-item-disabled" not in (btn.get_attribute("class") or "")
+-                          and target.is_enabled(), 15, 0.3):
++                          and target.is_enabled(), 15):
+             raise BPError("The Apply button stayed greyed out, so BrightPattern did not accept the changes.")
+         self._save_rows_before = {_norm(n) for n in self.page.evaluate(JS_TEAM_ROW_NAMES)}
+         target.click()

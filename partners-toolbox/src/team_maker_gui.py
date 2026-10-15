@@ -862,6 +862,38 @@ class TeamMakerGUI:
         """Close on the owner thread before staffing or Logged-In resumes."""
         self.worker.submit(lambda w: w.reset_bot()).result()
 
+    def u_teams_for_staffing(self, center, create=False, stop_event=None, timeout_s=300):
+        """Run on the staffing coordinator; browser operations stay on this worker."""
+        if not tmc.settings_complete(self.settings):
+            raise RuntimeError("Save the BrightPattern login in Team Maker > Login Settings first.")
+        from staffing_moves import CENTERS
+        if center not in CENTERS:
+            raise ValueError("Choose a known center.")
+        sups = next((v for k, v in tmc.load_centers().items() if k.casefold() == center.casefold()), None)
+        if create and sups is None:
+            raise RuntimeError(f"No supervisor preset is configured for {center} in teamMakerCenters.txt.")
+        settings = dict(self.settings)
+        stop = stop_event or threading.Event()
+
+        def job(worker):
+            try:
+                bot = worker.get_bot(settings)
+                return bot.create_u_team(center, sups) if create else (None, bot.read_u_teams())
+            finally:
+                worker.reset_bot()
+
+        future = self.worker.submit(job, stop_event=stop)
+        from concurrent.futures import TimeoutError
+        try:
+            return future.result(timeout=timeout_s)
+        except TimeoutError:
+            stop.set()
+            try:
+                future.result()
+            except Exception:
+                pass
+            raise RuntimeError("U-team work timed out. Refresh and verify the team list before retrying.")
+
     def _finish_batch(self, results, err):
         self._set_busy(False)
         ok = [n for n, e, _ in results if e is None]
