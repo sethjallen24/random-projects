@@ -8,16 +8,12 @@ PAD = 16
 GAP = 8
 LOG_FONT = ("Consolas", 9) if sys.platform == "win32" else ("TkFixedFont", 9)
 COLORS = {
-    # Pink, black, and yellow. Text pairs are chosen for WCAG AA contrast:
-    # light text on the black surfaces, black text on pink or yellow fills.
-    "surface": "#0b0b0d", "field": "#17151a", "text": "#fdf2f8",
-    "muted": "#d6a8c4", "border": "#3b2a35", "accent": "#ff4fa3",
-    "accent_hover": "#ffd60a", "on_accent": "#0b0b0d", "selection": "#4a1838",
-    "danger": "#ff6b81", "danger_border": "#6b2a3a", "danger_hover": "#2e1219",
-    "success": "#7fe0a0", "warning": "#ffd60a", "disabled": "#7d6b76",
-    "highlight": "#ffd60a",
-    "sidebar": "#000000", "sidebar_hover": "#2a0f20", "sidebar_selected": "#ff4fa3",
-    "sidebar_text": "#ffd60a", "sidebar_muted": "#f7b5d6", "heading": "#221d24",
+    "surface": "#edf2f3", "field": "#ffffff", "text": "#182f36",
+    "muted": "#526b73", "border": "#d6e2e5", "accent": "#087f83",
+    "accent_hover": "#05666a", "selection": "#e1f3f2", "danger": "#b42339",
+    "success": "#18734c", "warning": "#94560c", "disabled": "#6c7f85",
+    "sidebar": "#142b32", "sidebar_hover": "#203f47", "sidebar_selected": "#27535b",
+    "sidebar_text": "#f4fafb", "sidebar_muted": "#b7cdd2", "heading": "#f4f8f9",
 }
 MAX_LOG_LINES = 5000
 
@@ -42,105 +38,70 @@ def apply(root):
             pass
     c = COLORS
     root.configure(background=c["surface"])
-    # Classic Tk widgets (Toplevel, Text, Canvas, combobox drop-downs) read the
-    # option database, not ttk styles; set it so dialogs match the dark theme.
-    for pattern, value in (("*Toplevel.background", c["surface"]), ("*Canvas.background", c["field"]),
-                           ("*Frame.background", c["field"]), ("*Text.background", c["field"]),
-                           ("*Text.foreground", c["text"]), ("*Text.insertBackground", c["highlight"]),
-                           ("*Text.selectBackground", c["selection"]), ("*Text.selectForeground", c["text"]),
-                           ("*Scrollbar.background", c["border"]), ("*Scrollbar.troughColor", c["heading"]),
-                           ("*Scrollbar.activeBackground", c["accent"]),
-                           ("*TCombobox*Listbox.background", c["field"]),
-                           ("*TCombobox*Listbox.foreground", c["text"]),
-                           ("*TCombobox*Listbox.selectBackground", c["accent"]),
-                           ("*TCombobox*Listbox.selectForeground", c["on_accent"])):
-        root.option_add(pattern, value)
-    style.configure(".", background=c["field"], foreground=c["text"], font=(family, size),
-                    bordercolor=c["border"], lightcolor=c["field"], darkcolor=c["field"],
-                    troughcolor=c["heading"], selectbackground=c["accent"], selectforeground=c["on_accent"],
-                    insertcolor=c["highlight"], focuscolor=c["highlight"])
+    style.configure(".", background=c["field"], foreground=c["text"], font=(family, size))
     style.configure("TFrame", background=c["field"])
     style.configure("TLabel", background=c["field"], foreground=c["text"])
     style.configure("Workspace.TFrame", background=c["surface"])
     style.configure("Panel.TFrame", background=c["field"], bordercolor=c["border"], relief="solid", borderwidth=1)
-    style.configure("TButton", padding=(12, 7), background=c["heading"], bordercolor=c["border"],
-                    foreground=c["text"], relief="flat", focusthickness=2, focuscolor=c["highlight"],
-                    lightcolor=c["heading"], darkcolor=c["heading"])
+    style.configure("TButton", padding=(12, 7), background=c["field"], bordercolor=c["border"],
+                    foreground=c["text"], relief="flat", focusthickness=2, focuscolor=c["accent"])
     style.map("TButton", background=[("disabled", c["surface"]), ("pressed", c["border"]), ("active", c["selection"])],
-              foreground=[("disabled", c["disabled"]), ("active", c["highlight"])],
-              bordercolor=[("active", c["accent"])])
-    style.configure("Primary.TButton", background=c["accent"], foreground=c["on_accent"],
+              foreground=[("disabled", c["disabled"])])
+    style.configure("Primary.TButton", background=c["accent"], foreground="white",
                     font=(family, size, "bold"), bordercolor=c["accent"])
     style.map("Primary.TButton", background=[("disabled", c["border"]), ("pressed", c["accent_hover"]),
                                               ("active", c["accent_hover"])],
-              foreground=[("disabled", c["muted"]), ("!disabled", c["on_accent"])],
-              bordercolor=[("active", c["accent_hover"])])
-    style.configure("Danger.TButton", foreground=c["danger"], bordercolor=c["danger_border"])
+              foreground=[("disabled", c["muted"]), ("!disabled", "white")])
+    style.configure("Danger.TButton", foreground=c["danger"], bordercolor="#efd5db")
     style.map("Danger.TButton", foreground=[("disabled", c["disabled"]), ("!disabled", c["danger"])],
-              background=[("disabled", c["surface"]), ("active", c["danger_hover"])],
-              bordercolor=[("active", c["danger"])])
-    style.configure("TEntry", padding=7, fieldbackground=c["field"], foreground=c["text"],
-                    bordercolor=c["border"], insertcolor=c["highlight"], relief="flat")
-    style.map("TEntry", bordercolor=[("focus", c["accent"])], foreground=[("disabled", c["disabled"])],
-              fieldbackground=[("disabled", c["surface"])])
-    style.configure("TCombobox", padding=6, fieldbackground=c["field"], foreground=c["text"],
-                    background=c["field"], bordercolor=c["border"], arrowcolor=c["accent"], arrowsize=14)
+              background=[("disabled", c["surface"]), ("active", "#fff0f2")])
+    style.configure("TEntry", padding=7, fieldbackground=c["field"], bordercolor=c["border"], relief="flat")
+    style.map("TEntry", bordercolor=[("focus", c["accent"])])
+    style.configure("TCombobox", padding=6, fieldbackground=c["field"], bordercolor=c["border"], arrowsize=14)
     style.map("TCombobox", fieldbackground=[("readonly", c["field"]), ("disabled", c["surface"])],
-              foreground=[("disabled", c["disabled"]), ("readonly", c["text"])],
-              selectbackground=[("readonly", c["field"])], selectforeground=[("readonly", c["text"])],
-              background=[("active", c["selection"])], bordercolor=[("focus", c["accent"])],
-              arrowcolor=[("active", c["highlight"]), ("disabled", c["disabled"])])
-    style.configure("TCheckbutton", padding=(0, 4), background=c["field"], foreground=c["text"],
-                    indicatorbackground=c["surface"], indicatorforeground=c["highlight"])
-    style.map("TCheckbutton", background=[("active", c["field"])], foreground=[("disabled", c["disabled"])],
-              indicatorbackground=[("selected", c["accent"]), ("active", c["selection"])],
-              indicatorforeground=[("selected", c["on_accent"])])
-    style.configure("TNotebook", borderwidth=0, background=c["field"], bordercolor=c["border"],
-                    lightcolor=c["field"], darkcolor=c["field"], tabmargins=(0, 0, 0, 6))
+              foreground=[("disabled", c["disabled"])])
+    style.configure("TCheckbutton", padding=(0, 4), background=c["field"])
+    style.map("TCheckbutton", background=[("active", c["field"])], foreground=[("disabled", c["disabled"])])
+    style.configure("TNotebook", borderwidth=0, background=c["field"], tabmargins=(0, 0, 0, 6))
     style.configure("TNotebook.Tab", padding=(16, 9), background=c["field"], foreground=c["muted"],
-                    font=(family, size, "bold"), borderwidth=0, bordercolor=c["border"],
-                    lightcolor=c["field"], darkcolor=c["field"])
+                    font=(family, size, "bold"), borderwidth=0)
     style.map("TNotebook.Tab", background=[("selected", c["selection"]), ("active", c["heading"])],
-              lightcolor=[("selected", c["accent"])],
-              foreground=[("selected", c["highlight"]), ("active", c["accent"])])
+              foreground=[("selected", c["accent"])])
     style.configure("TLabelframe", padding=(PAD, GAP, PAD, PAD), background=c["field"],
                     bordercolor=c["border"], relief="solid", borderwidth=1)
-    style.configure("TLabelframe.Label", font=(family, size, "bold"), foreground=c["highlight"],
-                    background=c["field"])
+    style.configure("TLabelframe.Label", font=(family, size, "bold"), foreground=c["text"])
     style.configure("Treeview", rowheight=30, background=c["field"], fieldbackground=c["field"],
                     foreground=c["text"], bordercolor=c["border"], borderwidth=0, relief="flat")
     style.map("Treeview", background=[("selected", c["selection"])], foreground=[("selected", c["text"])])
     style.configure("Treeview.Heading", padding=(12, 9), background=c["heading"],
-                    foreground=c["accent"], font=(family, size, "bold"), relief="flat")
-    style.map("Treeview.Heading", background=[("active", c["selection"])], foreground=[("active", c["highlight"])])
-    for name in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
-        style.configure(name, background=c["border"], troughcolor=c["heading"], arrowcolor=c["accent"],
-                        bordercolor=c["heading"], borderwidth=0, arrowsize=12, gripcount=0)
-        style.map(name, background=[("active", c["accent"])], arrowcolor=[("active", c["on_accent"])])
+                    foreground=c["muted"], font=(family, size, "bold"), relief="flat")
+    style.configure("Vertical.TScrollbar", background=c["border"], troughcolor=c["heading"],
+                    borderwidth=0, arrowsize=12, gripcount=0)
+    style.configure("Horizontal.TScrollbar", background=c["border"], troughcolor=c["heading"],
+                    borderwidth=0, arrowsize=12, gripcount=0)
     style.configure("Hint.TLabel", foreground=c["muted"])
-    style.configure("Warning.TLabel", foreground=c["warning"])
+    style.configure("Warning.TLabel", foreground=c["danger"])
     style.configure("Target.TLabel", foreground=c["muted"])
-    style.configure("Title.TLabel", font=(family, 21, "bold"), foreground=c["accent"], background=c["surface"])
+    style.configure("Title.TLabel", font=(family, 21, "bold"), background=c["surface"])
     style.configure("Subtitle.TLabel", foreground=c["muted"], background=c["surface"])
-    style.configure("Eyebrow.TLabel", font=(family, 8, "bold"), foreground=c["highlight"], background=c["surface"])
-    style.configure("Section.TLabel", font=(family, 11, "bold"), foreground=c["highlight"])
+    style.configure("Eyebrow.TLabel", font=(family, 8, "bold"), foreground=c["muted"], background=c["surface"])
+    style.configure("Section.TLabel", font=(family, 11, "bold"), foreground=c["text"])
     style.configure("Compact.TButton", padding=(9, 4), foreground=c["muted"])
     style.configure("Status.TLabel", anchor="w", padding=(PAD, 9), background=c["heading"], foreground=c["muted"])
     style.configure("Sidebar.TFrame", background=c["sidebar"])
     style.configure("Brand.TLabel", background=c["sidebar"], foreground=c["sidebar_text"], font=(family, 15, "bold"))
     style.configure("SidebarHint.TLabel", background=c["sidebar"], foreground=c["sidebar_muted"], font=(family, 9))
     style.configure("SidebarHeading.TLabel", background=c["sidebar"], foreground=c["sidebar_muted"], font=(family, 8, "bold"))
-    style.configure("BrandMark.TLabel", background=c["accent"], foreground=c["on_accent"], font=(family, 12, "bold"),
+    style.configure("BrandMark.TLabel", background=c["accent"], foreground="white", font=(family, 12, "bold"),
                     padding=(10, 8), anchor="center")
     for name, selected in (("Nav.TButton", False), ("NavActive.TButton", True)):
         style.configure(name, background=c["sidebar_selected"] if selected else c["sidebar"],
-                        foreground=c["on_accent"] if selected else c["sidebar_muted"],
+                        foreground=c["sidebar_text"] if selected else c["sidebar_muted"],
                         bordercolor=c["sidebar_selected"] if selected else c["sidebar"],
                         padding=(16, 12), anchor="w", relief="flat", font=(family, 10, "bold"),
-                        focusthickness=2, focuscolor=c["highlight"])
-        style.map(name, background=[("active", c["sidebar_selected"] if selected else c["sidebar_hover"]),
-                                    ("pressed", c["sidebar_selected"])],
-                  foreground=[("active", c["on_accent"] if selected else c["sidebar_text"])])
+                        focusthickness=2, focuscolor=c["accent"])
+        style.map(name, background=[("active", c["sidebar_hover"]), ("pressed", c["sidebar_selected"])],
+                  foreground=[("active", "white")])
     root._partners_theme_applied = True
 
 
@@ -302,8 +263,7 @@ def log_pane(parent):
                                     relief="flat", borderwidth=0, padx=12, pady=10,
                                     background=COLORS["field"], foreground=COLORS["text"],
                                     highlightthickness=1, highlightbackground=COLORS["border"],
-                                    selectbackground=COLORS["selection"], selectforeground=COLORS["text"],
-                                    insertbackground=COLORS["highlight"])
+                                    insertbackground=COLORS["text"])
     box.pack(fill="both", expand=True)
     return box
 
@@ -315,7 +275,7 @@ def text_input(parent, **kwargs):
                    background=COLORS["field"], foreground=COLORS["text"],
                    highlightbackground=COLORS["border"], highlightcolor=COLORS["accent"],
                    selectbackground=COLORS["selection"], selectforeground=COLORS["text"],
-                   insertbackground=COLORS["highlight"])
+                   insertbackground=COLORS["text"])
     options.update(kwargs)
     return tk.Text(parent, **options)
 

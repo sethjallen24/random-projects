@@ -1,7 +1,6 @@
 # Speed optimizations
 
-Based on partners-toolbox-project-matching-fixed.zip, with the pink/black/yellow
-theme from the previous update merged in.
+Based on partners-toolbox-project-matching-fixed.zip, with its original colors.
 
 Almost all of the toolbox's time is spent waiting on BrightPattern pages. The
 Python logic (message parsing, project matching) takes about 11 ms per batch,

@@ -128,7 +128,6 @@ class UiRegressionTests(unittest.TestCase):
         class Root:
             def winfo_toplevel(self): return self
             def configure(self, **kwargs): pass
-            def option_add(self, pattern, value): pass
         first, second = Root(), Root()
         style = mock.MagicMock(); style.theme_names.return_value = ['clam']
         font = mock.MagicMock(); font.cget.side_effect = lambda name: 'Arial' if name == 'family' else 9

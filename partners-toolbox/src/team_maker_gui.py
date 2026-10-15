@@ -354,9 +354,9 @@ class TeamMakerGUI:
 
         list_box = ttk.Frame(center_box, relief="solid", borderwidth=1)
         list_box.pack(fill="both", expand=True)
-        self.sup_canvas = tk.Canvas(list_box, highlightthickness=0, height=150, background=theme.COLORS["field"])
+        self.sup_canvas = tk.Canvas(list_box, highlightthickness=0, height=150, background="white")
         sb = ttk.Scrollbar(list_box, orient="vertical", command=self.sup_canvas.yview)
-        self.sup_frame = tk.Frame(self.sup_canvas, background=theme.COLORS["field"], padx=6, pady=4)
+        self.sup_frame = tk.Frame(self.sup_canvas, background="white", padx=6, pady=4)
         self.sup_frame.bind("<Configure>",
                             lambda e: self.sup_canvas.configure(scrollregion=self.sup_canvas.bbox("all")))
         self.sup_canvas.create_window((0, 0), window=self.sup_frame, anchor="nw")
@@ -622,9 +622,8 @@ class TeamMakerGUI:
         self.sup_vars = []
         for name in self.centers.get(self.center_var.get(), []):
             var = tk.BooleanVar(value=True)
-            choice = tk.Checkbutton(self.sup_frame, text=name, variable=var, anchor="w", background=theme.COLORS["field"],
+            choice = tk.Checkbutton(self.sup_frame, text=name, variable=var, anchor="w", background="white",
                                     foreground=theme.COLORS["text"], activebackground=theme.COLORS["selection"],
-                                    activeforeground=theme.COLORS["highlight"], selectcolor=theme.COLORS["surface"],
                                     bd=0, highlightthickness=0, command=self._update_sup_count)
             choice.pack(fill="x")
             self._bind_wheel(choice)
