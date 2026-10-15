@@ -20,6 +20,56 @@ confirmation.
 | Team Maker waits that finish on a single read (header changed, picker filled, Apply enabled, skill prompt, team list filtered, blank form) | Polled every 0.2–0.3 s | Polls every 0.1 s. Waits that need two equal reads in a row keep their original spacing. | A little on each step |
 | App startup | Imported the Google Sheets/Chat client libraries at launch | Loads them the first time a Slack or Chat update runs | ~35% of import time at launch |
 
+## Team Maker fast path (round 2)
+
+Benchmarked on the local fixture: a batch of 4 project teams, each with 27
+supervisors and a campaign, assignment cache warm.
+
+| | Before | After |
+| --- | --- | --- |
+| First team (browser just opened) | 9.94 s | 6.63 s |
+| Each following team | 7.68 s | **4.60 s** |
+
+About 1.9 s of the 4.60 s is the fixture's own simulated server delay (three
+0.3 s filter responses and a 1 s save). Live times add BrightPattern's real
+response time to each step.
+
+- **Browser stays signed in between batches.** This applies in the full app
+  when Team Maker's login differs from Staffing's (true of your current setup).
+  Each batch used to close Staffing's browser, launch a new one for Team Maker,
+  sign in, open Teams and wait for the first team to load, then close it all
+  again. Jobs still run one at a time through the shared queue. With the same
+  login on both tabs, the old close-and-relaunch behavior is kept.
+- **Reload when idle.** A kept browser reloads the admin page from the server
+  if it has been idle more than 10 minutes, so the team list is never stale.
+  The standalone Team Maker window gains this protection too.
+- **One duplicate check instead of two.** The center's team list, already read
+  to find existing project teams, now also answers "does a team with this
+  exact name exist?" A separate name search runs only when that list can't
+  contain the name: holding names in parentheses, names with no center, or no
+  campaign.
+- **Supervisors selected in one step.** All 27 rows are selected with a
+  single browser call instead of 27 separate clicks. The selection is checked
+  row by row before the arrow is clicked; if it isn't exactly right, the old
+  click-by-click path runs instead.
+- **Center read finishes sooner.** Once the "N entries" count drops below the
+  unfiltered count (proof the filter reached the server), the read finishes
+  after 4 settled reads instead of waiting a fixed 1.5 s.
+- **Campaign search finishes sooner.** It polls every 0.15 s, but only
+  accepts a match after the list has visibly changed since typing (or 2 s
+  have passed). When there's no match, it still waits the same settle time
+  before giving up.
+- **Blank-form hold 1.0 s → 0.5 s, with a new pre-Apply check.** Right before
+  Apply, the form must still be the new-team form (no other team's name in
+  the header) and the name box must still hold the typed name. Otherwise
+  nothing is saved. This catches a late-loading team at any point, not just
+  in the first second.
+- **No fixed pauses.** The 0.2 s pause after dialog buttons and the 0.15 s
+  pause after row clicks now wait for the actual change instead.
+
+New regressions: `python test/test_team_maker_fast.py` (7 checks). Breaking
+the name check or the pre-Apply check on purpose makes them fail.
+
 ## Not changed (on purpose)
 
 - Members-grid and Agent Desktop settle windows (1.5 s / 2 s). These were added

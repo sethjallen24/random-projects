@@ -532,6 +532,19 @@ class TeamMakerGUI:
         except Exception as error:
             self.cache_var.set(f"Assignment cache unavailable: {error}")
 
+    def _keeps_browser(self):
+        """In the combined app, Team Maker's browser stays signed in between jobs
+        (and Staffing's stays open while Team Maker works) when the two tabs sign in
+        with different BrightPattern accounts. Jobs still run one at a time through
+        the shared queue; only the per-job relaunch and sign-in go away. With the
+        same account, each job keeps closing the other session first."""
+        session = getattr(getattr(self, "coordinator", None), "session", None)
+        other, mine = getattr(session, "username", None), self.settings.get("username")
+        if not (isinstance(other, str) and isinstance(mine, str)):
+            return False
+        other, mine = " ".join(other.split()).casefold(), " ".join(mine.split()).casefold()
+        return bool(mine and other and mine != other)
+
     def refresh_assignments(self):
         if self.is_running:
             return
@@ -545,11 +558,12 @@ class TeamMakerGUI:
         self._set_busy(True)
         self.status_var.set(f"Refreshing {center} assignments…")
         settings = dict(self.settings, show_browser=not self.headless_var.get())
+        keep = self._keeps_browser()
         def job(worker):
             try:
                 return len(worker.get_bot(settings).refresh_assignments(center))
             finally:
-                if getattr(self, "coordinator", None) is not None:
+                if getattr(self, "coordinator", None) is not None and not keep:
                     worker.reset_bot()
         done = lambda result, error: self.line_queue.put(("cache_done", (result or 0, error)))
         coordinator = getattr(self, "coordinator", None)
@@ -559,7 +573,8 @@ class TeamMakerGUI:
             else:
                 def coordinated(session, stop, opts):
                     try:
-                        session.close()
+                        if not keep:
+                            session.close()
                         future = self.worker.submit(job, done, stop_event=stop)
                     except Exception as error:
                         done(None, error)
@@ -780,13 +795,20 @@ class TeamMakerGUI:
         if coordinator is None:
             self.worker.submit(job, done)
         else:
+            keep = self._keeps_browser()
+            if keep and not getattr(self, "_kept_note", False):
+                self._kept_note = True
+                self._note("Team Maker and Staffing use different logins, so Team Maker's browser "
+                           "stays signed in between jobs.")
             def coordinated(session, stop, opts):
-                session.close()
+                if not keep:
+                    session.close()
                 def exclusive(w):
                     try:
                         return job(w)
                     finally:
-                        w.reset_bot()
+                        if not keep:
+                            w.reset_bot()
                 future = self.worker.submit(exclusive, stop_event=stop)
                 try:
                     result = future.result()

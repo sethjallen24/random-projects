@@ -95,10 +95,43 @@ index 8efd337..60d747d 100644
      if os.path.exists(TOKEN_FILE):
          creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
 diff --git a/src/team_maker_bp.py b/src/team_maker_bp.py
-index f9b2a73..79ab894 100644
+index f9b2a73..38f95fd 100644
 --- a/src/team_maker_bp.py
 +++ b/src/team_maker_bp.py
-@@ -303,9 +303,11 @@ class BrightPatternBot:
+@@ -131,6 +131,23 @@ JS_SAVE_STATE = f"""
+            dialogs: ({JS_DIALOGS})(), busy}};
+ }}"""
+ 
++# Selects grid rows the way a mouse does (mousedown/mouseup/click; Ctrl held
++# after the first row) in one browser round trip, then reports which rows
++# show as selected so the caller can verify before moving anything.
++JS_SELECT_ROWS = """
++([grid, indexes, cellSel]) => {
++  const rows = [...document.querySelectorAll(grid + ' .x-grid3-row')];
++  indexes.forEach((i, n) => {
++    const cell = rows[i] && (rows[i].querySelector(cellSel) || rows[i]);
++    if (!cell) return;
++    const r = cell.getBoundingClientRect();
++    const opts = {bubbles: true, cancelable: true, view: window, button: 0, ctrlKey: n > 0,
++                  clientX: r.left + Math.min(4, r.width / 2), clientY: r.top + Math.min(4, r.height / 2)};
++    for (const type of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(type, opts));
++  });
++  return rows.map(r => r.classList.contains('x-grid3-row-selected'));
++}"""
++
+ # Tags the visible "edit" link that belongs to the row whose label starts
+ # with `labelText` ("Supervisors:" / "Service and campaigns...").
+ JS_MARK_EDIT = """
+@@ -242,6 +259,8 @@ class BrightPatternBot:
+         self._ctx = None
+         self.page = None
+         self.step = "starting"
++        self._fresh_at = 0.0          # when the admin page last loaded from the server
++        self._last_inventory = None   # (center, team names) from the latest center read
+ 
+     # ---------------------------------------------------------------- browser
+     def start(self):
+@@ -303,9 +322,11 @@ class BrightPatternBot:
              return None
  
      # -------------------------------------------------------------- helpers
@@ -112,7 +145,52 @@ index f9b2a73..79ab894 100644
          end = time.monotonic() + timeout
          while True:
              self._check_stop()
-@@ -407,7 +409,7 @@ class BrightPatternBot:
+@@ -328,7 +349,10 @@ class BrightPatternBot:
+         if not btn.count():
+             return False
+         btn.first.click()
+-        time.sleep(0.2)
++        try:   # the dialog closing is the signal to go on (was a fixed 0.2 s pause)
++            btn.first.wait_for(state="hidden", timeout=500)
++        except Exception:
++            pass
+         return True
+ 
+     def _dismiss_save_prompt(self):
+@@ -364,6 +388,7 @@ class BrightPatternBot:
+         if not self.page.url.startswith(base):
+             self.log("Opening Contact Center Administrator...")
+             self.page.goto(base)
++            self._fresh_at = time.monotonic()
+         nav, login = self.page.locator(SEL_NAV), self.page.locator(SEL_LOGIN_USER)
+         if not self._wait(lambda: nav.is_visible() or login.is_visible(), 60, 0.5):
+             self.screenshot("load-failed")
+@@ -396,6 +421,24 @@ class BrightPatternBot:
+         self.ensure_logged_in()
+         self.open_teams()
+ 
++    # A browser kept open between batches must not work from an old copy of
++    # the Teams list: reload from the server when the page is older than this.
++    MAX_PAGE_AGE_S = 600
++
++    def _reload_if_stale(self):
++        if self.page is None:
++            return
++        if not self._fresh_at:          # page already open before tracking began: start the clock
++            self._fresh_at = time.monotonic()
++        if time.monotonic() - self._fresh_at <= self.MAX_PAGE_AGE_S:
++            return
++        from admin_teams import disable_http_cache
++        self.log("Reloading Contact Center Administrator (page was idle)...")
++        disable_http_cache(self.page)
++        self.page.reload(wait_until="domcontentloaded")
++        self._fresh_at = time.monotonic()
++        self.ensure_logged_in()
++
+     # --------------------------------------------------------------- teams
+     def open_teams(self):
+         entered = not self.page.locator(SEL_TEAMS_GRID).is_visible()
+@@ -407,7 +450,7 @@ class BrightPatternBot:
                  self.page.evaluate("() => { location.hash = 'GROUPS'; }")
              self._dismiss_save_prompt()
              self.page.wait_for_selector(SEL_TEAMS_GRID, state="visible", timeout=30000)
@@ -121,7 +199,7 @@ index f9b2a73..79ab894 100644
          if entered:
              # Wait for the actual first-team selection, once on entry. Network
              # idle may never arrive on this site's persistent connection.
-@@ -445,7 +447,7 @@ class BrightPatternBot:
+@@ -445,7 +488,7 @@ class BrightPatternBot:
                  return "found"
              return "absent" if self.team_count() != before else None  # filter applied, no match
  
@@ -130,7 +208,85 @@ index f9b2a73..79ab894 100644
          self._type_into(box, "")
          box.press("Enter")
          self._wait(lambda: self.team_count() == before, 6)
-@@ -593,7 +595,7 @@ class BrightPatternBot:
+@@ -459,6 +502,7 @@ class BrightPatternBot:
+         self.ensure_logged_in()
+         disable_http_cache(self.page)
+         self.page.reload(wait_until="domcontentloaded")
++        self._fresh_at = time.monotonic()
+         self.ensure_logged_in()
+         self.open_teams()
+         self._dismiss_save_prompt()
+@@ -534,6 +578,7 @@ class BrightPatternBot:
+         from admin_teams import disable_http_cache
+         disable_http_cache(self.page)
+         self.page.reload(wait_until="domcontentloaded")
++        self._fresh_at = time.monotonic()
+         self.ensure_logged_in()
+         self.open_teams()
+         self._dismiss_save_prompt()
+@@ -543,12 +588,25 @@ class BrightPatternBot:
+                                   if _team_center(team) != center}
+         return self._read_center_assignments(center)
+ 
++    @staticmethod
++    def _center_filter(center):
++        import staffing_moves as sm
++        return min((alias for alias, value in sm.CENTER_ALIASES.items() if value == center and len(alias) >= 3), key=len)
++
++    def _inventory_covers(self, name, campaign):
++        """True when the center read in existing_project_team() is guaranteed to list a
++        team called `name` if one exists, so a separate name search is redundant."""
++        center = _team_center(name)
++        return bool(campaign and center and not name.lstrip().startswith("(")
++                    and _norm(self._center_filter(center)) in _norm(name))
++
+     def _read_center_assignments(self, center):
+         import staffing_moves as sm
+         from admin_teams import open_team
+         started = time.monotonic()
+         box = self.page.locator(f"{SEL_FILTER_INPUT}:visible").first
+-        center_filter = min((alias for alias, value in sm.CENTER_ALIASES.items() if value == center and len(alias) >= 3), key=len)
++        center_filter = self._center_filter(center)
++        unfiltered = self.team_count()
+         self._type_into(box, center_filter)
+         box.press("Enter")
+         scroll_nodes = self.page.locator(f"{SEL_TEAMS_GRID} .x-grid3-scroller")
+@@ -557,7 +615,7 @@ class BrightPatternBot:
+         found, previous, stale = set(), None, 0
+         inventory_started = time.monotonic()
+         deadline = inventory_started + 20
+-        complete = False
++        complete = narrowed = False
+         while time.monotonic() < deadline:
+             self._check_stop()
+             names = tuple(self.page.evaluate(JS_TEAM_ROW_NAMES))
+@@ -566,16 +624,23 @@ class BrightPatternBot:
+                 pos = scroll.evaluate("e => ({top:e.scrollTop, height:e.scrollHeight, view:e.clientHeight})")
+                 end = pos["top"] + pos["view"] >= pos["height"] - 1
+                 stale = stale + 1 if end else 0
+-                if stale >= 4 and time.monotonic() - inventory_started >= 1.5:
++                # A smaller "N entries" than before typing proves the center
++                # filter reached the server and the grid; then four settled reads
++                # (0.15 s apart) at the end of the list suffice. Otherwise keep the
++                # original 1.5 s minimum.
++                count = self.team_count()
++                narrowed = count is not None and unfiltered is not None and count < unfiltered
++                if stale >= 4 and (narrowed or time.monotonic() - inventory_started >= 1.5):
+                     complete = True
+                     break
+                 scroll.evaluate("e => {e.scrollTop += Math.max(100,e.clientHeight*.8); e.dispatchEvent(new Event('scroll', {bubbles:true}));}")
+             previous = names
+-            time.sleep(.3)
++            time.sleep(.15 if narrowed else .3)
+         self._type_into(box, "")
+         box.press("Enter")
+         if not complete:
+             raise BPError("Could not finish reading this center's existing teams. Nothing was created; try again.")
++        self._last_inventory = (center, {_norm(n) for n in found})
+         cache = getattr(self, "_assignment_cache", {})
+         self._assignment_cache = cache
+         remembered_data = self._load_remembered() if self._cache_hours() else {}
+@@ -593,7 +658,7 @@ class BrightPatternBot:
                  self._open_form_tab("Services")
                  self._open_picker("Service and")
                  loaded = self._wait(lambda: self._names("services", SEL_LEFT_GRID) or
@@ -139,7 +295,44 @@ index f9b2a73..79ab894 100644
                  if not loaded:
                      self._click_dialog_button("Cancel")
                      self.page.wait_for_selector(SEL_ASSIGN_WIN, state="hidden")
-@@ -771,13 +773,13 @@ class BrightPatternBot:
+@@ -674,6 +739,7 @@ class BrightPatternBot:
+             self._check_stop()
+             self.step = "signing in"
+             self.ensure_logged_in()
++            self._reload_if_stale()
+             self.step = "opening Teams"
+             self.open_teams()
+             self._dismiss_save_prompt()
+@@ -685,11 +751,19 @@ class BrightPatternBot:
+                 raise BPError(f"BrightPattern is at its {limit}-team limit. Delete an old team first.")
+ 
+             self.step = "checking the name"
+-            named_exists = self.team_exists(name)
++            covered = self._inventory_covers(name, campaign)
++            named_exists = None if covered else self.team_exists(name)
+             self.step = "checking existing projects"
++            self._last_inventory = None
+             existing = self.existing_project_team(name, campaign)
+             if existing:
+                 raise TeamAlreadyExists(existing)
++            if named_exists is None:
++                inventory = self._last_inventory
++                if inventory is None or inventory[0] != _team_center(name):
++                    named_exists = self.team_exists(name)   # center read didn't run; search by name
++                else:
++                    named_exists = _norm(name) in inventory[1]
+             if named_exists:
+                 if campaign and _team_center(name):
+                     raise BPError(f'Team "{name}" already exists but is not assigned to "{campaign}". '
+@@ -714,6 +788,7 @@ class BrightPatternBot:
+                                   'check the project name and retry.')
+ 
+             self._check_stop()
++            self._verify_draft(name)
+             self.step = "clicking Apply"
+             self.log(f"Team ready to save in {time.monotonic() - started:.1f}s.")
+             self.log("Saving (Apply)...")
+@@ -771,17 +846,28 @@ class BrightPatternBot:
                  self._fail_on_dialog("BrightPattern would not add a team")
                  return self._new_form_ready()
  
@@ -149,13 +342,111 @@ index f9b2a73..79ab894 100644
                  def stays_blank():
                      if not blank():
                          return "changed"
-                     return "ready" if time.monotonic() - blank_since >= 1.0 else None
+-                    return "ready" if time.monotonic() - blank_since >= 1.0 else None
 -                if self._wait(stays_blank, 2, 0.2) == "ready":
++                    return "ready" if time.monotonic() - blank_since >= 0.5 else None
 +                if self._wait(stays_blank, 2) == "ready":
                      return self.page.locator(SEL_TEAM_NAME)
              self.log("New-team form wasn't blank yet; trying add-team again...")
          raise BPError("The blank new-team form did not open, so nothing was typed or saved.")
-@@ -1063,7 +1065,7 @@ class BrightPatternBot:
+ 
++    def _verify_draft(self, name):
++        """Last check before Apply: still the NEW-team form (no existing team's
++        name in the header) and the name box still holds what was typed. A late
++        load of another team into the form is caught here, before anything saves."""
++        parts = [p.strip() for p in self._header().split(">>")]
++        other_team = len(parts) >= 3 and parts[1] != _norm(name)
++        typed = _norm(self.page.locator(SEL_TEAM_NAME).input_value())
++        if other_team or typed != _norm(name):
++            raise BPError("The new-team form changed before saving (another team's details loaded into it). "
++                          "Nothing was saved; try again.")
++
+     # ------------------------------------------------------- picker dialogs
+     def _open_picker(self, label):
+         """Click the 'edit' link under `label` and wait for the two-list picker to fill."""
+@@ -819,8 +905,10 @@ class BrightPatternBot:
+         seen = set()
+         all_read = False
+         for query in queries:
++            before = self._names("services", SEL_LEFT_GRID)
+             self._type_into(box, query)
+             box.press("Enter")
++            typed_at = time.monotonic()
+             scroll_candidates = self.page.locator(f"{SEL_LEFT_GRID} .x-grid3-scroller")
+             scroller = scroll_candidates.first if scroll_candidates.count() else self.page.locator(SEL_LEFT_GRID)
+             scroller.evaluate("e => { e.scrollTop = 0; e.dispatchEvent(new Event('scroll', {bubbles:true})); }")
+@@ -831,8 +919,10 @@ class BrightPatternBot:
+                 names = self._names("services", SEL_LEFT_GRID)
+                 seen.update(names)
+                 hits = [i for i, name in enumerate(names) if _campaign_key(name) == target]
+-                # Two stable reads ensure filtering has actually finished.
+-                if names == previous:
++                # The list must have changed since typing (or 2 s passed) and then
++                # read the same twice in a row: filtering has actually finished.
++                applied = names != before or time.monotonic() - typed_at >= 2
++                if names == previous and applied:
+                     if len(hits) > 1:
+                         raise BPError(f'Multiple campaigns match "{campaign}"; use a unique full name.')
+                     if hits:
+@@ -840,12 +930,12 @@ class BrightPatternBot:
+                     position = scroller.evaluate("e => ({top:e.scrollTop, height:e.scrollHeight, view:e.clientHeight})")
+                     at_end = position["top"] + position["view"] >= position["height"] - 1
+                     unchanged = unchanged + 1 if at_end else 0
+-                    if unchanged >= 4:
++                    if unchanged >= 8:   # 8 reads 0.15 s apart: the same settle time as before
+                         all_read = query == "" or bool(client and query == client)
+                         break
+                     scroller.evaluate("e => { e.scrollTop += Math.max(100, e.clientHeight * .8); e.dispatchEvent(new Event('scroll', {bubbles:true})); }")
+                 previous = names
+-                time.sleep(.3)
++                time.sleep(.15)
+             if all_read:
+                 break
+         if all_read:
+@@ -863,7 +953,7 @@ class BrightPatternBot:
+         for _ in range(3):
+             row = self.page.locator(f"{SEL_LEFT_GRID} .x-grid3-row").nth(idx)
+             row.locator(JS_CLICK_CELL[kind]).click()
+-            time.sleep(0.15)
++            self._wait(lambda: "x-grid3-row-selected" in (row.get_attribute("class") or ""), 0.5, 0.05)
+             names = self._names(kind, SEL_LEFT_GRID)
+             if idx < len(names) and names[idx] == target and \
+                     "x-grid3-row-selected" in (row.get_attribute("class") or ""):
+@@ -956,9 +1046,10 @@ class BrightPatternBot:
+                 index.setdefault(n, i)
+             wanted = list(dict.fromkeys(a for a in actual.values() if a in index and a not in right))
+             if wanted:
+-                rows = self.page.locator(f"{SEL_LEFT_GRID} .x-grid3-row")
+-                for n, a in enumerate(wanted):
+-                    rows.nth(index[a]).locator(JS_CLICK_CELL["people"]).click(modifiers=["Control"] if n else None)
++                if not self._select_rows_at_once("people", [index[a] for a in wanted], left):
++                    rows = self.page.locator(f"{SEL_LEFT_GRID} .x-grid3-row")
++                    for n, a in enumerate(wanted):
++                        rows.nth(index[a]).locator(JS_CLICK_CELL["people"]).click(modifiers=["Control"] if n else None)
+                 self.page.locator(SEL_TO_RIGHT).click()
+                 self._wait(lambda: set(wanted) <= set(self._names("people", SEL_RIGHT_GRID)), 5)
+         except PWTimeout:
+@@ -987,6 +1078,19 @@ class BrightPatternBot:
+             raise BPError("Supervisor list did not match after adding: " + "; ".join(not_in))
+         self.log(f"  {len(supervisors)} supervisor(s) assigned.")
+ 
++    def _select_rows_at_once(self, kind, indexes, expected_names):
++        """Select `indexes` in the Available list with one scripted round trip.
++        True only when the list is unchanged and EXACTLY those rows show as
++        selected; otherwise the caller clicks them one by one (the first plain
++        click there resets any partial selection)."""
++        try:
++            if self._names(kind, SEL_LEFT_GRID) != expected_names:
++                return False
++            selected = self.page.evaluate(JS_SELECT_ROWS, [SEL_LEFT_GRID, indexes, JS_CLICK_CELL[kind]])
++        except Exception:
++            return False
++        return [i for i, on in enumerate(selected) if on] == sorted(indexes)
++
+     def _log_respelled(self, actual):
+         for wanted, found in actual.items():
+             if found != _norm(wanted):
+@@ -1063,7 +1167,7 @@ class BrightPatternBot:
          buttons = btn.locator("button:visible")
          target = buttons.first if buttons.count() else btn
          if not self._wait(lambda: "x-item-disabled" not in (btn.get_attribute("class") or "")
