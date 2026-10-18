@@ -119,6 +119,12 @@ JS_VIEW_HEADER = """
 JS_TEAM_ROW_NAMES = """
 () => [...document.querySelectorAll('#gwt-debug-grid-TEAMS .x-grid3-td-name')].map(td => td.textContent.trim())"""
 
+# The Selected list from the last project read, if no picker has opened
+# since. Kept in the page itself, so a reload (which rebuilds the picker)
+# forgets it.
+JS_GET_PICKER_SERVICES = "() => window.__tmPickerServices ?? null"
+JS_SET_PICKER_SERVICES = "(names) => { window.__tmPickerServices = names; }"
+
 # Read confirmation, errors and progress in one browser round trip. A row
 # inserted during a save must not count as success while a saving mask is up.
 JS_SAVE_STATE = f"""
@@ -636,10 +642,14 @@ class BrightPatternBot:
                 scroll.evaluate("e => {e.scrollTop += Math.max(100,e.clientHeight*.8); e.dispatchEvent(new Event('scroll', {bubbles:true}));}")
             previous = names
             time.sleep(.15 if narrowed else .3)
-        self._type_into(box, "")
-        box.press("Enter")
         if not complete:
+            self._type_into(box, "")
+            box.press("Enter")
             raise BPError("Could not finish reading this center's existing teams. Nothing was created; try again.")
+        # The center filter stays on while teams are opened below: each one is
+        # already on screen, so open_team clicks it instead of running a name
+        # search (a server round trip) per team. Cleared once the reads finish.
+        scroll.evaluate("e => {e.scrollTop=0; e.dispatchEvent(new Event('scroll', {bubbles:true}));}")
         self._last_inventory = (center, {_norm(n) for n in found})
         cache = getattr(self, "_assignment_cache", {})
         self._assignment_cache = cache
@@ -654,38 +664,74 @@ class BrightPatternBot:
                     cache[team] = remembered
             if team not in cache:
                 self.log(f'  Reading assignments {number}/{len(found)}: "{team}"')
-                open_team(self.page, team, timeout_ms=20000)
-                self._open_form_tab("Services")
-                self._open_picker("Service and")
-                loaded = self._wait(lambda: self._names("services", SEL_LEFT_GRID) or
-                                    self._names("services", SEL_RIGHT_GRID), 10)
-                if not loaded:
-                    self._click_dialog_button("Cancel")
-                    self.page.wait_for_selector(SEL_ASSIGN_WIN, state="hidden")
-                    raise BPError(f'Project lists did not load for "{team}". Nothing was created.')
-                previous_services = None
-                opened_at = time.monotonic()
-                def settled():
-                    nonlocal previous_services
-                    services = self._names("services", SEL_RIGHT_GRID)
-                    stable = services == previous_services and time.monotonic() - opened_at >= 1.5
-                    previous_services = services
-                    return ("ready", services) if stable else None
-                result = self._wait(settled, 8, .4)
-                self._click_dialog_button("Cancel")
-                self.page.wait_for_selector(SEL_ASSIGN_WIN, state="hidden")
-                self._open_form_tab("Properties")
-                if not result:
-                    raise BPError(f'Could not read project assignments for "{team}". Nothing was created.')
-                cache[team] = {_campaign_key(s) for s in result[1]}
+                cache[team] = self._read_team_services(team, open_team)
                 newly_read[team] = cache[team]
             else:
                 reused += 1
+        # A failure above leaves the filter on; _recover() reloads the page.
+        if newly_read:
+            self._open_form_tab("Properties")
+        self._type_into(box, "")
+        box.press("Enter")
         if newly_read:
             self._remember_services_batch(newly_read)
         self.log(f"Project assignment check finished in {time.monotonic() - started:.1f}s "
                  f"({len(newly_read)} read, {reused} cached).")
         return {team: cache[team] for team in found}
+
+    def _read_team_services(self, team, open_team):
+        """Open `team`'s services picker and return its Selected campaigns (keyed)."""
+        open_team(self.page, team, timeout_ms=20000)
+        # The grid cell open_team waits for is on screen before the form
+        # switches, so confirm the header names this team before reading.
+        if not self._wait(lambda: self._header().startswith(_norm(f"Teams >> {team} >> ")), 10):
+            raise BPError(f'"{team}" did not open. Nothing was created.')
+        self._open_form_tab("Services")
+        stale = self._picker_services()
+        self._open_picker("Service and")
+        loaded = self._wait(lambda: self._names("services", SEL_LEFT_GRID) or
+                            self._names("services", SEL_RIGHT_GRID), 10)
+        if not loaded:
+            self._click_dialog_button("Cancel")
+            self.page.wait_for_selector(SEL_ASSIGN_WIN, state="hidden")
+            raise BPError(f'Project lists did not load for "{team}". Nothing was created.')
+        # The picker can briefly show the previous team's list. A list that
+        # differs from the one recorded by the previous read is this team's,
+        # so two equal reads suffice. An empty or unchanged list (or no record)
+        # keeps the 1.5 s minimum and must hold steady for 0.4 s.
+        opened_at = time.monotonic()
+        current, since = None, opened_at
+        def settled():
+            nonlocal current, since
+            services = self._names("services", SEL_RIGHT_GRID)
+            now = time.monotonic()
+            if services != current:
+                current, since = services, now
+                return None
+            fresh = stale is not None and bool(services) and all(services) and services != stale
+            ready = (fresh and now - since >= .1) or (now - since >= .4 and now - opened_at >= 1.5)
+            return ("ready", services) if ready else None
+        result = self._wait(settled, 8, .15)
+        if result:
+            self._set_picker_services(result[1])
+        self._click_dialog_button("Cancel")
+        self.page.wait_for_selector(SEL_ASSIGN_WIN, state="hidden")
+        if not result:
+            raise BPError(f'Could not read project assignments for "{team}". Nothing was created.')
+        return {_campaign_key(s) for s in result[1]}
+
+    def _picker_services(self):
+        try:
+            names = self.page.evaluate(JS_GET_PICKER_SERVICES)
+        except Exception:
+            return None
+        return names if isinstance(names, list) else None
+
+    def _set_picker_services(self, names):
+        try:
+            self.page.evaluate(JS_SET_PICKER_SERVICES, names)
+        except Exception:
+            pass
 
     # ------------------------------------------------- remembered services
     def _cache_hours(self):
@@ -873,6 +919,7 @@ class BrightPatternBot:
         """Click the 'edit' link under `label` and wait for the two-list picker to fill."""
         if not self.page.evaluate(JS_MARK_EDIT, label):
             raise BPError(f'Could not find the "edit" link for {label.rstrip(":")}.')
+        self._set_picker_services(None)   # whatever it shows next isn't from a recorded read
         self.page.locator("[data-tm-edit]").click()
         self.page.wait_for_selector(SEL_ASSIGN_WIN, state="visible")
 

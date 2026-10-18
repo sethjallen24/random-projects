@@ -335,6 +335,7 @@ class PickerUI:
         return [n for n in names if self.query.casefold() in n.casefold()][self.offset:self.offset+self.page_size]
     def evaluate(self, script, arg=None):
         if script == bp.JS_TEAM_ROW_NAMES: return self.visible_names(True)
+        if script == bp.JS_VIEW_HEADER: return f'Teams >> {self.team} >> Properties' if self.team else 'Teams >> Properties'
         if 'top:e.scrollTop' in script:
             total=len([n for n in (self.teams if self.team_mode else self.campaigns) if self.query.casefold() in n.casefold()])
             return dict(top=self.offset,height=total,view=self.page_size)
