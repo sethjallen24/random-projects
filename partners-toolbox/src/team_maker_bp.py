@@ -376,7 +376,7 @@ class BrightPatternBot:
     def _type_into(self, target, text):
         loc = self.page.locator(target) if isinstance(target, str) else target
         loc.click()
-        loc.press("Control+A")
+        loc.press("ControlOrMeta+A")   # Ctrl+A on a Mac only moves to the line start
         loc.press("Backspace")
         if text:
             loc.press_sequentially(text, delay=0)
@@ -1096,7 +1096,7 @@ class BrightPatternBot:
                 if not self._select_rows_at_once("people", [index[a] for a in wanted], left):
                     rows = self.page.locator(f"{SEL_LEFT_GRID} .x-grid3-row")
                     for n, a in enumerate(wanted):
-                        rows.nth(index[a]).locator(JS_CLICK_CELL["people"]).click(modifiers=["Control"] if n else None)
+                        rows.nth(index[a]).locator(JS_CLICK_CELL["people"]).click(modifiers=["ControlOrMeta"] if n else None)
                 self.page.locator(SEL_TO_RIGHT).click()
                 self._wait(lambda: set(wanted) <= set(self._names("people", SEL_RIGHT_GRID)), 5)
         except PWTimeout:

@@ -90,11 +90,7 @@ class SheetToChatGUI:
         if not embedded:
             self.root.title(sc.APP_TITLE)
             self.root.geometry("700x420")
-            try:
-                if ICON_PATH.exists():
-                    self.root.iconbitmap(default=str(ICON_PATH))
-            except Exception:
-                pass  # icon is cosmetic only, never fatal
+            theme.set_icon(self.root, ICON_PATH)  # icon is cosmetic only, never fatal
 
         self.stop_event = threading.Event()
         self.scheduler_thread = None

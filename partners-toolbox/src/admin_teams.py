@@ -631,7 +631,7 @@ def select_members_by_name(page, agent_names, timeout_ms=15000, team_name=None, 
         if i == 0:
             row.click()
         else:
-            row.click(modifiers=["Control"])
+            row.click(modifiers=["ControlOrMeta"])   # Cmd on a Mac, Ctrl elsewhere
 
     if matched_targets:
         chosen = members_panel.evaluate(_MEMBER_NAMES_JS.replace(
@@ -848,7 +848,7 @@ def move_selected_members_to_team(page, destination_team, dry_run=False, timeout
     # above); waiting for and clicking the actually-matching option
     # directly is enough, and doesn't risk confirming a stale highlight.
     search_input.click()
-    search_input.press("Control+A")
+    search_input.press("ControlOrMeta+A")   # Ctrl+A on a Mac only moves to the line start
     search_input.press("Backspace")
     search_input.press_sequentially(destination_team, delay=20)
 

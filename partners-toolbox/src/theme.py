@@ -6,7 +6,11 @@ from tkinter import ttk
 
 PAD = 16
 GAP = 8
-LOG_FONT = ("Consolas", 9) if sys.platform == "win32" else ("TkFixedFont", 9)
+MAC = sys.platform == "darwin"
+LOG_FONT = ("Consolas", 9) if sys.platform == "win32" else ("Menlo", 9) if MAC else ("TkFixedFont", 9)
+# Keyboard shortcuts use Command on a Mac and Ctrl elsewhere.
+SHORTCUT_KEY = "Command" if MAC else "Control"
+SHORTCUT_LABEL = "\u2318" if MAC else "Ctrl +"
 COLORS = {
     # Pink, black, and yellow. Text pairs are chosen for WCAG AA contrast:
     # light text on the black surfaces, black text on pink or yellow fills.
@@ -27,6 +31,10 @@ def apply(root):
     root = root.winfo_toplevel()
     if getattr(root, "_partners_theme_applied", False):
         return
+    if MAC:
+        # Tk on a Mac sizes fonts at 72 dpi, so the point sizes below (chosen
+        # on Windows at 96 dpi) would come out a quarter smaller.
+        root.tk.call("tk", "scaling", 96 / 72)
     style = ttk.Style(root)
     if "clam" in style.theme_names():
         style.theme_use("clam")
@@ -142,6 +150,33 @@ def apply(root):
                                     ("pressed", c["sidebar_selected"])],
                   foreground=[("active", c["on_accent"] if selected else c["sidebar_text"])])
     root._partners_theme_applied = True
+
+
+def set_icon(root, ico_path):
+    """Use `ico_path` as the window icon: the .ico on Windows, else the PNG
+    beside it (on a Mac this is also the Dock icon). Cosmetic, never raises."""
+    try:
+        if sys.platform == "win32":
+            if ico_path.exists():
+                root.iconbitmap(default=str(ico_path))
+            return
+        png = ico_path.with_suffix(".png")
+        if png.exists():
+            image = tk.PhotoImage(master=root, file=str(png))
+            root.iconphoto(True, image)
+            root._partners_icon = image   # Tk drops an image nothing references
+    except Exception:
+        pass
+
+
+def bind_quit(root, on_quit):
+    """Route the Mac's Command-Q / Quit menu item through the window's own
+    close handler, so jobs and browsers shut down as they do on Windows."""
+    if MAC:
+        try:
+            root.createcommand("tk::mac::Quit", on_quit)
+        except tk.TclError:
+            pass
 
 
 class ScrollableControls(ttk.Frame):
@@ -310,7 +345,7 @@ def log_pane(parent):
 
 def text_input(parent, **kwargs):
     """A normal Tk text editor, styled consistently with entries."""
-    options = dict(wrap="word", undo=True, font=("Segoe UI", 10) if sys.platform == "win32" else ("TkDefaultFont", 10),
+    options = dict(wrap="word", undo=True, font=("Segoe UI", 10) if sys.platform == "win32" else "TkDefaultFont",
                    relief="flat", borderwidth=0, padx=12, pady=10, highlightthickness=1,
                    background=COLORS["field"], foreground=COLORS["text"],
                    highlightbackground=COLORS["border"], highlightcolor=COLORS["accent"],

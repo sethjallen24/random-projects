@@ -116,15 +116,9 @@ class BrightPatternSyncGUI:
             # makes Windows show this icon on the taskbar button while the
             # app is running (separate from the *Desktop shortcut's* icon,
             # which create_desktop_shortcut.vbs sets on the .lnk file itself).
-            # iconbitmap(..., default=...) with a .ico path is Windows-specific
-            # (X11/Tk elsewhere expects XBM/PNG) -- wrapped defensively so this
-            # never blocks the app from starting on a platform/Tk build where
-            # it isn't supported.
-            try:
-                if ICON_PATH.exists():
-                    self.root.iconbitmap(default=str(ICON_PATH))
-            except Exception:
-                pass
+            # The .ico is Windows-only; a Mac (and Linux) gets the PNG beside
+            # it. theme.set_icon never raises, so this can't block startup.
+            theme.set_icon(self.root, ICON_PATH)
 
         self.line_queue = queue.Queue()
         self.is_running = False

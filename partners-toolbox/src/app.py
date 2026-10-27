@@ -47,11 +47,7 @@ class PartnersToolboxApp:
         self.root.minsize(1100, 640)
         theme.apply(self.root)
 
-        try:
-            if ICON_PATH.exists():
-                self.root.iconbitmap(default=str(ICON_PATH))
-        except Exception:
-            pass  # icon is cosmetic only, never fatal
+        theme.set_icon(self.root, ICON_PATH)  # icon is cosmetic only, never fatal
 
         self._build_shell()
 
@@ -63,8 +59,9 @@ class PartnersToolboxApp:
         self.chat_gui = sheet_chat_gui.SheetToChatGUI(self.pages["chat"], embedded=True)
         self.show_workspace("staffing")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        theme.bind_quit(self.root, self._on_close)
         self.root.bind("<Configure>", self._schedule_window_save, add="+")
-        if window.get("maximized") is True and sys.platform == "win32":
+        if window.get("maximized") is True and sys.platform in ("win32", "darwin"):
             self.root.after_idle(lambda: self.root.state("zoomed"))
 
     WORKSPACES = (
@@ -91,7 +88,7 @@ class PartnersToolboxApp:
         footer = ttk.Frame(sidebar, style="Sidebar.TFrame", padding=(8, 12, 0, 0))
         footer.pack(side="bottom", fill="x")
         ttk.Label(footer, text="KEYBOARD SHORTCUTS", style="SidebarHeading.TLabel").pack(anchor="w")
-        ttk.Label(footer, text="Ctrl + 1 / 2 / 3 / 4", style="SidebarHint.TLabel").pack(anchor="w", pady=(6, 0))
+        ttk.Label(footer, text=f"{theme.SHORTCUT_LABEL} 1 / 2 / 3 / 4", style="SidebarHint.TLabel").pack(anchor="w", pady=(6, 0))
 
         self.nav_buttons = {}
         for index, (key, label, _title, _subtitle) in enumerate(self.WORKSPACES):
@@ -101,7 +98,7 @@ class PartnersToolboxApp:
             button = ttk.Button(sidebar, text=label, style="Nav.TButton", command=lambda name=key: self.show_workspace(name))
             button.pack(fill="x", pady=3)
             self.nav_buttons[key] = button
-            self.root.bind(f"<Control-Key-{index + 1}>", lambda event, name=key: self._navigate_shortcut(name), add="+")
+            self.root.bind(f"<{theme.SHORTCUT_KEY}-Key-{index + 1}>", lambda event, name=key: self._navigate_shortcut(name), add="+")
 
         content = ttk.Frame(body, style="Workspace.TFrame", padding=(20, 16, 20, 16))
         content.pack(side="left", fill="both", expand=True)

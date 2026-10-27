@@ -24,3 +24,9 @@ Partners Toolbox.exe
 config/teamMaker.json
 config/teamMakerAssignments.json
 team_maker_browser_profile/
+
+# Mac: the installer's private Python environment and the app it builds
+# (both machine-specific, rebuilt by "Install (Mac).command")
+.venv/
+Partners Toolbox.app/
+.DS_Store

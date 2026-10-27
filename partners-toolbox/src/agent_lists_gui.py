@@ -201,7 +201,8 @@ class AgentAssignmentDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text=f"{center} · {group}", style="Section.TLabel").pack(anchor="w")
         theme.hint(frame, "Select the exact people to move. All names are selected initially; "
-                   "Ctrl-click or Shift-click to change the selection.", pady=(4, theme.GAP))
+                   f"{'Command' if theme.MAC else 'Ctrl'}-click or Shift-click to change the selection.",
+                   pady=(4, theme.GAP))
         self._destination = tk.StringVar()
         self._selection_count = tk.StringVar()
 
