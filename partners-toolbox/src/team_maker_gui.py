@@ -213,11 +213,7 @@ class TeamMakerGUI:
         if not embedded:
             self.root.title(TAB_TITLE)
             self.root.geometry("820x720")
-            try:
-                if ICON_PATH.exists():
-                    self.root.iconbitmap(default=str(ICON_PATH))
-            except Exception:
-                pass
+            theme.set_icon(self.root, ICON_PATH)
 
         self.line_queue = queue.Queue()
         self.is_running = False
@@ -324,7 +320,7 @@ class TeamMakerGUI:
         names_scroll.pack(side="right", fill="y")
         self.names_text.configure(yscrollcommand=names_scroll.set)
         self.names_text.bind("<<Modified>>", self._on_names_modified)
-        self.names_text.bind("<Control-Return>", lambda e: (self.on_create(), "break")[1])
+        self.names_text.bind(f"<{theme.SHORTCUT_KEY}-Return>", lambda e: (self.on_create(), "break")[1])
 
         # -- center + supervisors -----------------------------------------------------
         center_box = theme.section(center_column, "Center & supervisors", fill="both", expand=True)
@@ -594,6 +590,8 @@ class TeamMakerGUI:
         try:
             if sys.platform.startswith("win"):
                 os.startfile(str(path))  # Notepad / default editor
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-t", str(path)])  # default text editor (TextEdit)
             else:
                 subprocess.Popen(["xdg-open", str(path)])
         except OSError as e:
