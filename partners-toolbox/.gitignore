@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+venv/
+.env
+failure-screenshots/
+debug-dumps/
+gui_error.log
+logs/
+
+# Slack Update's and Chat Updates' Google OAuth secrets and Slack bot
+# token -- never commit or bundle these, same hard rule as .env above.
+credentials.json
+token.json
+chat_token.json
+slack_token.txt
+
+# Build artifacts from the optional "Build Desktop Icon (optional).bat"
+# step -- the built .exe itself is machine-specific output, not source.
+build/
+*.spec
+Partners Toolbox.exe
+
+# Team Maker: its own BrightPattern login and dedicated browser profile
+config/teamMaker.json
+config/teamMakerAssignments.json
+team_maker_browser_profile/
