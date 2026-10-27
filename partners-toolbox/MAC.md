@@ -80,8 +80,8 @@ Windows behavior is unchanged.
 
 These checks ran on Linux, the only system available here:
 
-- Every existing test suite gives the same results as the Windows version
-  (see "Validation" below).
+- Every existing test suite gives the same results before and after the
+  Mac changes (see "Validation" below).
 - The installer was dry-run up to launching the app, with the Mac-only
   commands simulated. The Chromium download was skipped because the test
   machine's network blocks it.
@@ -90,3 +90,23 @@ These checks ran on Linux, the only system available here:
 
 No real Mac was available. Before relying on it, run one Team Maker team
 and one staffing move on the Mac and check that both work.
+
+## Validation
+
+These suites ran on the previous version and on this one, with identical
+results:
+
+| Suite | Previous | Mac version |
+| --- | --- | --- |
+| `run_offline.py` | 95 pass | 95 pass |
+| `run_design_checks.py` | 285 pass | 285 pass |
+| `test_reliability`, `test_ui_runtime`, `test_final_audit` | 21 / 18 / 31 pass | same |
+| `test_team_maker`, `_speed`, `_fast` | 10 / 13 / 9 pass | same |
+| `test_staffing_accuracy` | 55 pass | 55 pass |
+| `test_agent_lists_ui`, `test_uteams_ui`, `test_project_matching_ui`, `test_layout_resize` | 7 / 4 / 3 / 4 pass | same |
+| `test/run.py` | 89 pass, stops at the Slack "Delete Last" GUI check | same |
+| `test_staffing_moves` | 38 pass, then a Staffing Moves panel GUI timeout | same |
+| `test_workspace_ui` | 4 pass, 1 window-size check fails under a virtual display | same |
+
+The three failures are the same on both versions and were already listed
+in SPEED_OPTIMIZATIONS.md (or depend on a real display).
